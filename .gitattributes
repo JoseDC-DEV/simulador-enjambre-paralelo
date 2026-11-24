@@ -1,0 +1,6 @@
+# Normaliza los finales de línea (el repo mezcla CRLF y LF)
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.ini text eol=lf
