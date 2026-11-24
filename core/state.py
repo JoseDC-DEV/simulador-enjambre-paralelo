@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from core.entities import Asteroid, Player, Projectile
 
-DEFAULT_MAX_ACTIVE = 15  # meteoritos simultáneos en pantalla (ver core/waves.py)
+DEFAULT_MAX_ACTIVE = 20  # meteoritos simultáneos en pantalla (ver core/waves.py)
 
 
 @dataclass(frozen=True)
