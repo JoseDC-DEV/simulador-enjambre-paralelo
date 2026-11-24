@@ -1,8 +1,9 @@
 """Benchmark: actualización secuencial vs paralela de los asteroides.
 
-Mide cuántos milisegundos tarda un frame de simulación (solo la actualización
-del estado, sin render) con cada versión y cada cantidad de asteroides de
-config.ENTIDADES_PRUEBA.
+Mide cuántos FPS de simulación (solo la actualización del estado, sin render)
+alcanza cada versión con cada cantidad de asteroides de config.ENTIDADES_PRUEBA
+(1000 / 3000 / 5000) e imprime la tabla Secuencial vs Paralelo junto con los
+datos técnicos: núcleos detectados, workers y estrategia de partición.
 
 Uso, desde la raíz del proyecto:
     python benchmark.py
@@ -25,7 +26,12 @@ from config import (
     NUCLEOS_CPU,
     WORKERS,
 )
-from core.parallel import create_pool, update_parallel
+from core.parallel import (
+    PARTITION_STRATEGY,
+    create_pool,
+    describe_partition,
+    update_parallel,
+)
 from core.simulation import create_initial_state, update
 from core.waves import release_all
 
@@ -41,6 +47,18 @@ class Result:
     parallel_ms: float
     pickle_ms: float  # referencia del costo de comunicación
     identical: bool  # ¿ambas versiones terminan en el mismo GameState?
+
+    @property
+    def sequential_fps(self) -> float:
+        return 1000 / self.sequential_ms
+
+    @property
+    def parallel_fps(self) -> float:
+        return 1000 / self.parallel_ms
+
+    @property
+    def speedup(self) -> float:
+        return self.sequential_ms / self.parallel_ms
 
 
 # --- Medición ---
@@ -93,28 +111,53 @@ def benchmark_size(n, pool, workers, frames, repeats, warmup):
     )
 
 
-# --- Presentación ---
+def run_benchmark(pool, workers, frames, repeats, warmup, sizes=ENTIDADES_PRUEBA):
+    """Mide todas las cargas. Lo usan la línea de comandos y la pantalla del juego."""
+    return tuple(
+        benchmark_size(n, pool, workers, frames, repeats, warmup) for n in sizes
+    )
+
+
+# --- Presentación (líneas de texto: sirven para consola y para la pantalla del juego) ---
+
+def technical_lines(workers, sizes=ENTIDADES_PRUEBA):
+    """Datos técnicos a exponer: núcleos, workers y estrategia de partición."""
+    return (
+        "DATOS TÉCNICOS",
+        f"Núcleos totales detectados: {NUCLEOS_CPU}",
+        f"Workers (procesos concurrentes) configurados: {workers}",
+        f"Sistema: {platform.system()} | Python {platform.python_version()}",
+        "Estrategia de partición de entidades:",
+        *(f"  {line}" for line in PARTITION_STRATEGY),
+        "Reparto real con esta configuración:",
+        *(f"  {describe_partition(n, workers)}" for n in sizes),
+    )
+
+
+def table_lines(results, workers, frames, repeats):
+    """Tabla comparativa Secuencial (1 núcleo) vs Paralelo (N nucleos) en FPS."""
+    header = (
+        f"{'Cantidad de entidades':>21} | {'Secuencial (1 núcleo)':>21} | "
+        f"{f'Paralelo ({workers} workers)':>21} | {'Aceleración':>11} | {'Idéntico':>8}"
+    )
+    rows = tuple(
+        f"{f'{r.n:,} entidades':>21} | {f'{r.sequential_fps:,.1f} FPS':>21} | "
+        f"{f'{r.parallel_fps:,.1f} FPS':>21} | {f'{r.speedup:.2f}x':>11} | "
+        f"{'sí' if r.identical else 'NO':>8}"
+        for r in results
+    )
+    notes = (
+        f"{frames} frames por corrida, mediana de {repeats} corridas.",
+        "FPS = 1000 / ms por frame de simulación (sin render).",
+        f"Objetivo: {FPS_OBJETIVO} FPS. Aceleración < 1.00x: el paralelo fue más lento.",
+    )
+    return ("RENDIMIENTO (FPS de simulación)", header, "-" * len(header), *rows, "", *notes)
+
 
 def format_table(results, workers, frames, repeats):
-    header = (
-        f"{'Asteroides':>10} | {'Secuencial':>11} | {'Paralelo':>10} | "
-        f"{'Aceleración':>11} | {'Pickle ref.':>11} | {'¿Idéntico?':>10}"
+    return "\n".join(
+        [*table_lines(results, workers, frames, repeats), "", *technical_lines(workers)]
     )
-    rows = [
-        f"{r.n:>10} | {r.sequential_ms:>8.2f} ms | {r.parallel_ms:>7.2f} ms | "
-        f"{r.sequential_ms / r.parallel_ms:>10.2f}x | {r.pickle_ms:>8.2f} ms | "
-        f"{'sí' if r.identical else 'NO':>10}"
-        for r in results
-    ]
-    info = [
-        f"Python {platform.python_version()} | {platform.system()} | "
-        f"núcleos: {NUCLEOS_CPU} | workers: {workers}",
-        f"{frames} frames por corrida, mediana de {repeats} corridas (ms por frame).",
-        f"Presupuesto por frame a {FPS_OBJETIVO} FPS: {1000 / FPS_OBJETIVO:.2f} ms "
-        "(solo cubre la actualización; el render se suma).",
-        "Aceleración < 1.00x significa que la versión paralela fue más lenta.",
-    ]
-    return "\n".join([*info, "", header, "-" * len(header), *rows])
 
 
 def parse_args():
@@ -130,12 +173,9 @@ def main():
     args = parse_args()
     # Un único Pool persistente para todas las mediciones.
     with create_pool(args.workers) as pool:
-        results = [
-            benchmark_size(
-                n, pool, args.workers, args.frames, args.repeats, args.warmup
-            )
-            for n in ENTIDADES_PRUEBA
-        ]
+        results = run_benchmark(
+            pool, args.workers, args.frames, args.repeats, args.warmup
+        )
     print(format_table(results, args.workers, args.frames, args.repeats))
 
 

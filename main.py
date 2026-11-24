@@ -6,6 +6,7 @@ Uso, desde la raíz del proyecto:
     python main.py --asteroids 5000 --max-active 5000   # modo estrés (demo de paralelismo)
 
 Flujo: menú -> partida -> (game over o victoria) -> menú.
+En el menú, [B] mide Secuencial vs Paralelo (FPS) y muestra núcleos, workers y partición.
 Cola de meteoritos: nunca hay más de --max-active en pantalla; cada vez que uno
 sale (o es destruido) entra el siguiente. Victoria: agotar la cola y despejar la pantalla.
 Controles: izquierda/derecha rotan, arriba acelera, espacio dispara,
@@ -30,13 +31,16 @@ from config import (
     NIVELES_JUEGO,
     WORKERS,
 )
+from benchmark import format_table, run_benchmark, table_lines, technical_lines
 from core.parallel import create_pool, update_parallel
 from core.simulation import create_initial_state, update
 from core.state import DEFAULT_MAX_ACTIVE
 from render.menu import (
     MenuConfig,
+    draw_benchmark_screen,
     draw_end_screen,
     draw_menu,
+    draw_message,
     menu_lines,
     mode_label,
     next_config,
@@ -55,6 +59,10 @@ EXIT, MENU, GAME_OVER, VICTORY = "exit", "menu", "game_over", "victory"  # resul
 
 END_TITLES = {GAME_OVER: "GAME OVER", VICTORY: "¡VICTORIA!"}
 
+# Benchmark dentro del juego: corto para no hacer esperar, la CLI permite más precisión.
+BENCH_FRAMES, BENCH_REPEATS, BENCH_WARMUP = 30, 3, 3
+REPORT_FILE = "resultados_benchmark.txt"
+
 
 def make_step(parallel, pool, workers):
     """Devuelve la función (state, events) -> GameState del modo elegido."""
@@ -69,7 +77,7 @@ def make_step(parallel, pool, workers):
     return step
 
 
-def run_menu(screen, title_font, font, clock, config, sizes, workers):
+def run_menu(screen, title_font, font, clock, config, sizes, workers, on_benchmark):
     """Muestra el menú. Devuelve la MenuConfig elegida, o None si se sale."""
     while True:
         pygame_events = pygame.event.get()
@@ -77,9 +85,39 @@ def run_menu(screen, title_font, font, clock, config, sizes, workers):
         if window_closed(pygame_events) or pygame.K_ESCAPE in keys:
             return None
         config = reduce(lambda c, k: next_config(c, k, sizes), keys, config)
+        if pygame.K_b in keys and not on_benchmark():
+            return None  # se cerró la ventana durante el benchmark
         if pygame.K_RETURN in keys:
             return config
         draw_menu(screen, title_font, font, menu_lines(config, sizes, workers))
+        clock.tick(FPS_OBJETIVO)
+
+
+def benchmark_screen(screen, title_font, font, mono_font, clock, pool, workers):
+    """Mide Secuencial vs Paralelo, muestra la tabla y la guarda en un archivo.
+
+    Devuelve True para volver al menú, False si se cerró la ventana.
+    """
+    draw_message(screen, font, "Midiendo rendimiento (unos segundos)...")
+    pygame.event.pump()
+    results = run_benchmark(pool, workers, BENCH_FRAMES, BENCH_REPEATS, BENCH_WARMUP)
+    report = format_table(results, workers, BENCH_FRAMES, BENCH_REPEATS)
+    with open(REPORT_FILE, "w", encoding="utf-8") as f:
+        f.write(report + "\n")
+    lines = (
+        *table_lines(results, workers, BENCH_FRAMES, BENCH_REPEATS),
+        "",
+        *technical_lines(workers),
+        "",
+        f"Guardado en {REPORT_FILE}",
+    )
+    while True:
+        pygame_events = pygame.event.get()
+        if window_closed(pygame_events):
+            return False
+        if {pygame.K_RETURN, pygame.K_ESCAPE} & set(key_presses(pygame_events)):
+            return True
+        draw_benchmark_screen(screen, title_font, mono_font, lines)
         clock.tick(FPS_OBJETIVO)
 
 
@@ -125,13 +163,23 @@ def app(args, pool):
         title_font = pygame.font.Font(None, 72)
         font = pygame.font.Font(None, 24)
         menu_font = pygame.font.Font(None, 32)
+        mono_font = pygame.font.SysFont("couriernew,consolas,dejavusansmono,monospace", 17)
         clock = pygame.time.Clock()
         sizes = tuple(NIVELES_JUEGO)
         config = MenuConfig(args.asteroids, args.mode == "parallel")
 
         while True:
             config = run_menu(
-                screen, title_font, menu_font, clock, config, sizes, args.workers
+                screen,
+                title_font,
+                menu_font,
+                clock,
+                config,
+                sizes,
+                args.workers,
+                lambda: benchmark_screen(
+                    screen, title_font, menu_font, mono_font, clock, pool, args.workers
+                ),
             )
             if config is None:
                 return

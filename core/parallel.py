@@ -24,6 +24,27 @@ from core.transformations import next_state
 from core.waves import refill_from_queue
 
 
+PARTITION_STRATEGY = (
+    "Descomposición de datos por bloques contiguos (split_chunks): la tupla de",
+    "asteroides se divide en un bloque por worker, en orden y con tamaños que",
+    "difieren como máximo en 1. Cada bloque viaja a un proceso del Pool persistente",
+    "con pool.starmap, junto con los proyectiles y la nave (solo lectura), y el worker",
+    "ejecuta process_asteroids (movimiento + colisiones) sobre su bloque. starmap",
+    "es bloqueante (barrera): al terminar todos, consolidate une los bloques en orden.",
+    "Fuera de los workers (proceso principal): eventos, nave, cola y siguiente estado.",
+)
+
+
+def describe_partition(entities: int, workers: int) -> str:
+    """Tamaños reales de los bloques para `entities` asteroides y `workers` workers."""
+    sizes = [len(c) for c in split_chunks(tuple(range(entities)), workers)]
+    if not sizes:
+        return "sin entidades"
+    low, high = min(sizes), max(sizes)
+    shape = f"{low}" if low == high else f"{low}-{high}"
+    return f"{entities} entidades -> {len(sizes)} bloques de {shape}"
+
+
 def create_pool(workers: int) -> Pool:
     """Crea el Pool persistente. Se crea una vez y se reutiliza en todos los frames."""
     return multiprocessing.Pool(processes=workers)

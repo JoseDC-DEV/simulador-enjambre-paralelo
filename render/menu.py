@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 
 import pygame
 
+from config import NUCLEOS_CPU
 from render.renderer import BLACK, GRAY, WHITE, YELLOW
 
 SIZE_KEYS = (pygame.K_1, pygame.K_2, pygame.K_3)
@@ -43,6 +44,9 @@ def menu_lines(config: MenuConfig, sizes: tuple, workers: int) -> tuple:
         *options,
         "",
         f"[M] Modo: {mode_label(config.parallel, workers)}",
+        f"    Núcleos detectados: {NUCLEOS_CPU}   Workers: {workers}",
+        "",
+        "[B] Benchmark: tabla Secuencial vs Paralelo (FPS)",
         "",
         "[ENTER] Jugar        [ESC] Salir",
         "",
@@ -74,4 +78,24 @@ def draw_end_screen(screen, title_font, font, title: str, score: int) -> None:
         160,
         GRAY,
     )
+    pygame.display.flip()
+
+
+def draw_message(screen, font, text: str) -> None:
+    """Mensaje a pantalla completa (por ejemplo, mientras se mide)."""
+    screen.fill(BLACK)
+    screen.blit(font.render(text, True, WHITE), (60, 160))
+    pygame.display.flip()
+
+
+def draw_benchmark_screen(screen, title_font, mono_font, lines: tuple) -> None:
+    """Tabla comparativa y datos técnicos (fuente monoespaciada para alinear columnas)."""
+    screen.fill(BLACK)
+    screen.blit(title_font.render("BENCHMARK", True, YELLOW), (30, 15))
+    for i, line in enumerate(lines):
+        is_title = line.startswith(("RENDIMIENTO", "DATOS", "Estrategia", "Reparto"))
+        color = YELLOW if is_title else WHITE
+        screen.blit(mono_font.render(line, True, color), (30, 90 + i * 21))
+    footer = "[ENTER] o [ESC]: volver al menú"
+    screen.blit(mono_font.render(footer, True, GRAY), (30, 90 + (len(lines) + 1) * 21))
     pygame.display.flip()
