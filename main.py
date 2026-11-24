@@ -22,7 +22,7 @@ import argparse
 from functools import reduce
 from time import perf_counter
 
-import pygame
+import pygame  # type: ignore
 
 from config import (
     ALTO_PANTALLA,
@@ -67,13 +67,17 @@ REPORT_FILE = "resultados_benchmark.txt"
 def make_step(parallel, pool, workers):
     """Devuelve la función (state, events) -> GameState del modo elegido."""
     if parallel:
+
         def step(state, events):
             return update_parallel(
                 pool, state, events, DT, ANCHO_PANTALLA, ALTO_PANTALLA, workers
             )
+
     else:
+
         def step(state, events):
             return update(state, events, DT, ANCHO_PANTALLA, ALTO_PANTALLA)
+
     return step
 
 
@@ -163,7 +167,9 @@ def app(args, pool):
         title_font = pygame.font.Font(None, 72)
         font = pygame.font.Font(None, 24)
         menu_font = pygame.font.Font(None, 32)
-        mono_font = pygame.font.SysFont("couriernew,consolas,dejavusansmono,monospace", 17)
+        mono_font = pygame.font.SysFont(
+            "couriernew,consolas,dejavusansmono,monospace", 17
+        )
         clock = pygame.time.Clock()
         sizes = tuple(NIVELES_JUEGO)
         config = MenuConfig(args.asteroids, args.mode == "parallel")
@@ -217,7 +223,9 @@ def parse_args():
         default=DEFAULT_MAX_ACTIVE,
         help="máximo de asteroides simultáneos en pantalla",
     )
-    parser.add_argument("--mode", choices=("parallel", "sequential"), default="parallel")
+    parser.add_argument(
+        "--mode", choices=("parallel", "sequential"), default="parallel"
+    )
     parser.add_argument("--workers", type=int, default=WORKERS)
     parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args()
